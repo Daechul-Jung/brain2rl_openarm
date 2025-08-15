@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.ipynb_checkpoints/
+
+# VS Code / IDE
+.vscode/
+.idea/
+
+# OS cruft
+.DS_Store
+
+# ROS/colcon build artifacts (these live outside the pkg, but ignore if someone builds here)
+build/
+install/
+log/
+
+# CMake leftovers (just in case)
+CMakeFiles/
+CMakeCache.txt
