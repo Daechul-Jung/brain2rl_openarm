@@ -46,17 +46,17 @@ def main():
 
     for ep in range(args.episodes):
         obs, _ = env.reset()
-        ret = 0.0
+        return_value = 0.0
         for t in range(args.steps):
             if agent is None or not hasattr(agent, "act"):
                 action = env.action_space.sample()
             else:
                 action = agent.act(obs)  # expected to return np.ndarray
             obs, r, term, trunc, _ = env.step(action)
-            ret += r
+            return_value += r
             if term or trunc:
                 break
-        print(f"[run_with_agent] ep {ep+1} return={ret:.3f}")
+        print(f"[run_with_agent] ep {ep+1} return={return_value:.3f}")
     env.close()
 
 if __name__ == "__main__":
