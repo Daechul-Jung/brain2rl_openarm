@@ -4,7 +4,7 @@ import threading
 import time
 from typing import Optional, Tuple, Dict
 
-import gym
+import gymnasium as gym
 import numpy as np
 
 import rclpy

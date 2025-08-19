@@ -1,14 +1,13 @@
 from setuptools import find_packages, setup
 from glob import glob
 import os
+
 package_name = 'brain2rl_openarm'
 
-from setuptools import setup
-package_name = 'brain2rl_openarm'
 setup(
     name=package_name,
     version='0.0.1',
-    packages=[package_name],
+    packages=find_packages(),
     data_files=[
         ('share/ament_index/resource_index/packages', ['resource/' + package_name]),
         ('share/' + package_name + '/launch', 
@@ -28,9 +27,10 @@ setup(
     license='MIT',
     entry_points={
         'console_scripts': [
-            'rl_train_joint.py = brain2rl_openarm.scripts.rl_train_joint:main',
-            'run_with_agent.py = brain2rl_openarm.scripts.run_with_agent:main',
-            'spawn_random_cup.py = brain2rl_openarm.scripts.spawn_random_cup:main',
+            'rl_train_joint = brain2rl_openarm.scripts.rl_train_joint:main',
+            'run_with_agent = brain2rl_openarm.scripts.run_with_agent:main',
+            'spawn_random_cup = brain2rl_openarm.scripts.spawn_random_cup:main',
+            'test_env = brain2rl_openarm.scripts.test_env:main',
         ],
     },
 )
