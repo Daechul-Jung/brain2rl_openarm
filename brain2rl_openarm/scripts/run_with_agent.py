@@ -8,11 +8,17 @@ import argparse
 import sys
 import os
 import numpy as np
+import torch
 
 # Add the brain2rl directory to the Python path
 brain2rl_path = os.path.expanduser('~/brain2rl')
 if brain2rl_path not in sys.path:
     sys.path.insert(0, brain2rl_path)
+
+# Add the specific paths for the PPO agent
+models_path = os.path.join(brain2rl_path, 'models')
+if models_path not in sys.path:
+    sys.path.insert(0, models_path)
 
 try:
     from brain2rl_openarm.envs.openarm_env import OpenArmEnv
@@ -36,20 +42,69 @@ def create_random_agent(env):
     
     return RandomAgent(env.action_space)
 
-def create_ppo_agent(env, model_path):
-    """Create a PPO agent from brain2rl (placeholder)"""
+def create_ppo_agent(env, model_path=None):
+    """Create a PPO agent from brain2rl"""
     try:
-        # This is a placeholder - you'll need to implement based on your brain2rl framework
-        print(f"[run_with_agent] Attempting to load PPO agent from {model_path}")
+        print("[run_with_agent] Attempting to load PPO agent from brain2rl...")
         
-        # Placeholder for PPO agent creation
-        # You'll need to implement this based on your brain2rl framework
-        print("[run_with_agent] PPO agent loading not yet implemented")
+        # Import the PPO agent
+        from models.rl.agents.ppo import PPOAgent
+        
+        # Get environment dimensions
+        obs_dim = env.observation_space.shape[0]
+        act_dim = env.action_space.shape[0]
+        
+        print(f"[run_with_agent] Creating PPO agent with obs_dim={obs_dim}, act_dim={act_dim}")
+        
+        # Create PPO agent
+        agent = PPOAgent(observation_dim=obs_dim, action_dim=act_dim, device="cpu")
+        
+        # Load model if provided
+        if model_path and os.path.exists(model_path):
+            print(f"[run_with_agent] Loading model from {model_path}")
+            try:
+                # Load the model weights
+                checkpoint = torch.load(model_path, map_location='cpu')
+                agent.policy_net.load_state_dict(checkpoint['policy_net'])
+                agent.value_net.load_state_dict(checkpoint['value_net'])
+                print("[run_with_agent] Model loaded successfully")
+            except Exception as e:
+                print(f"[run_with_agent] Warning: Could not load model: {e}")
+                print("[run_with_agent] Using untrained agent")
+        else:
+            print("[run_with_agent] No model path provided or file not found, using untrained agent")
+        
+        # Create a wrapper to match the expected interface
+        class PPOAgentWrapper:
+            def __init__(self, ppo_agent):
+                self.ppo_agent = ppo_agent
+                self.action_space = env.action_space
+            
+            def act(self, obs):
+                # Scale the action from PPO output to environment action space
+                action, _ = self.ppo_agent.get_action(obs, training=False)
+                
+                # The PPO agent outputs actions in [-1, 1], but our environment expects
+                # actions in the action_space bounds. We need to scale accordingly.
+                action_space_low = self.action_space.low
+                action_space_high = self.action_space.high
+                
+                # Scale from [-1, 1] to [action_space_low, action_space_high]
+                scaled_action = (action + 1) / 2 * (action_space_high - action_space_low) + action_space_low
+                
+                return scaled_action
+            
+            def reset(self):
+                pass
+        
+        return PPOAgentWrapper(agent)
+        
+    except ImportError as e:
+        print(f"[run_with_agent] Error importing PPO agent: {e}")
         print("[run_with_agent] Falling back to random agent")
         return create_random_agent(env)
-        
     except Exception as e:
-        print(f"[run_with_agent] Error loading PPO agent: {e}")
+        print(f"[run_with_agent] Error creating PPO agent: {e}")
         print("[run_with_agent] Falling back to random agent")
         return create_random_agent(env)
 

@@ -1,5 +1,6 @@
 # brain2rl_openarm
 brain2rl_openarm wrapper
+```
 $HOME/
 └─ ros2_ws/                      # ROS 2 workspace (colcon build)
    ├─ src/
@@ -29,3 +30,4 @@ $HOME/
    │     │     └─ openarm_demo.launch.py      
    │     └─ test/                       
    └─ (build/ install/ log/ after you build)
+```

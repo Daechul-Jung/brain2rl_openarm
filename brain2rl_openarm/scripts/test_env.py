@@ -51,15 +51,15 @@ def main():
     
     # Test 1: Import
     if not test_import():
-        print("\n[test_env] ❌ Import test failed!")
+        print("\n[test_env] Import test failed!")
         return False
     
     # Test 2: Environment creation
     if not test_environment_creation():
-        print("\n[test_env] ❌ Environment creation test failed!")
+        print("\n[test_env] Environment creation test failed!")
         return False
     
-    print("\n[test_env] ✅ All tests passed!")
+    print("\n[test_env] All tests passed!")
     print("[test_env] The OpenArm environment is properly set up.")
     print("[test_env] Note: Full functionality requires ROS2 and Gazebo to be running.")
     

@@ -27,10 +27,12 @@ setup(
     license='MIT',
     entry_points={
         'console_scripts': [
+            ####  Added for more nodes
             'rl_train_joint = brain2rl_openarm.scripts.rl_train_joint:main',
             'run_with_agent = brain2rl_openarm.scripts.run_with_agent:main',
             'spawn_random_cup = brain2rl_openarm.scripts.spawn_random_cup:main',
             'test_env = brain2rl_openarm.scripts.test_env:main',
+            'train_ppo_openarm = brain2rl_openarm.scripts.train_ppo_openarm:main',
         ],
     },
 )
