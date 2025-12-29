@@ -1,19 +1,18 @@
 # brain2rl_openarm
 brain2rl_openarm wrapper
 ```
-$HOME/
-└─ ros2_ws/                      # ROS 2 workspace (colcon build)
+ros2_ws/                      # ROS 2 workspace (colcon build)
    ├─ src/
    │  ├─ openarm_ros2/           # upstream repo (bringup, moveit config, hardware*)
    │  │  ├─ openarm_bringup/     # launch/config (we use for sim)
    │  │  ├─ openarm_bimanual_moveit_config/  # MoveIt config (fake controller demo)
    │  │  └─ openarm_hardware/  
    │  ├─ openarm_description/    # URDF/Xacro + meshes for OpenArm
-   │  └─ brain2rl_openarm/       # ★ your ROS wrapper for RL + sim glue
+   │  └─ brain2rl_openarm/       # your ROS wrapper for RL + sim glue
    │     ├─ package.xml
    │     ├─ setup.py
    │     ├─ resource/
-   │     │  └─ brain2rl_openarm  # ament marker file (must exist)
+   │     │  └─ brain2rl_openarm 
    │     ├─ brain2rl_openarm/
    │     │  ├─ __init__.py
    │     │  ├─ envs/
