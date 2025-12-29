@@ -16,6 +16,10 @@ setup(
         ('share/' + package_name + '/launch',
             glob(os.path.join(package_name, 'launch', '*.launch.py'))),
         # install config files (optional, but useful)
+        ('share/' + package_name + '/config', [
+            'config/openarm_topics.yaml',
+            'config/openarm_task.yaml',
+        ]),
         ('share/' + package_name + '/config',
             glob(os.path.join(package_name, 'config', '*'))),
     ],

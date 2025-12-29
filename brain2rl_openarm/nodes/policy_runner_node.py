@@ -57,7 +57,7 @@ class PolicyRunnerNode(Node):
         self.declare_parameter('joint_names', ['joint1', 'joint2', 'joint3', 'joint4', 'joint5', 'joint6'])
         self.declare_parameter('action_mode', 'delta_position')
         self.declare_parameter('max_delta_rad', 0.05)
-        self.declare_parameter('use_effort', False) ## VLA style
+        self.declare_parameter('use_effort', False) 
 
         self.policy_path = self.get_parameter('policy_path').value
         self.js_topic = self.get_parameter('joint_state_topic').value 
