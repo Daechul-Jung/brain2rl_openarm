@@ -17,41 +17,63 @@ def generate_launch_description():
     train_ros = LaunchConfiguration('train_ros')
     run_agent = LaunchConfiguration('run_agent')
 
-    policy_path = LaunchConfiguration('run_agent')
+    policy_path = LaunchConfiguration('policy_path')
     agent_ckpt = LaunchConfiguration('agent_ckpt')
 
     gazebo = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
-            os.path.join(get_package_share_directory('gazebo_ros'), 'launch', 'gazebo.launch.py')), 
-            launch_arguments={'gui': gui, 'verbose': 'true', 'extra_gazebo_args': '-s libgazebo_ros_path_plugin.so'}.items()
-        )
-    
-    robot_description = ParameterValue(
-        Command(['xacro', model, ' use_sim:=true ros2_control:=true']),
-        value_type = str
+            os.path.join(get_package_share_directory('gazebo_ros'), 'launch', 'gazebo.launch.py')),
+        launch_arguments={
+            'gui': gui,
+            'verbose': 'true',
+            'extra_gazebo_args': '-s libgazebo_ros_path_plugin.so'
+        }.items()
     )
 
-    rsp = Node(package='robot_state_publisher', executable='robot_state_publisher',
-               output = 'screen', parameters=[{'robot_description': robot_description}])
+    robot_description = ParameterValue(
+        Command(['xacro', model, ' use_sim:=true ros2_control:=true']),
+        value_type=str
+    )
 
-    spawn_robot = Node(package='gazebo_ros', executable='spawn_entity.py',
-                       arguments = ['-topic', 'robot_description', '-entity', 'openarm'],
-                       output = 'screen')
-    
-    jsb = Node(package='controller_manager', executable='spawner',
-               arguments = ['joint_state_broadcaster', '--controller-manager', '/controller_manager'],
-               output = 'screen')
-               
-    jpos = Node(package='cnotroller_manager', executable='spawner',
-                arguments=['joint_group_position_controller', '--controller-manager', '/controller_manager'],
-                output='screen')
-    
-    spawn_cup = Node(package='brain2rl_openarm', executable='spawn_random_cup', output = 'screen')
+    rsp = Node(
+        package='robot_state_publisher',
+        executable='robot_state_publisher',
+        output='screen',
+        parameters=[{'robot_description': robot_description,
+                     'use_sim_time': True}]
+    )
+
+    spawn_robot = Node(
+        package='gazebo_ros',
+        executable='spawn_entity.py',
+        arguments=['-topic', 'robot_description', '-entity', 'openarm'],
+        output='screen'
+    )
+
+    jsb = Node(
+        package='controller_manager',
+        executable='spawner',
+        arguments=['joint_state_broadcaster', '--controller-manager', '/controller_manager'],
+        output='screen'
+    )
+
+    jpos = Node(
+        package='controller_manager',
+        executable='spawner',
+        arguments=['joint_group_position_controller', '--controller-manager', '/controller_manager'],
+        output='screen'
+    )
+
+    spawn_cup = Node(
+        package='brain2rl_openarm',
+        executable='spawn_random_cup',
+        output='screen'
+    )
 
     policy_runner = Node(
-        package = 'brain2rl_openarm',
+        package='brain2rl_openarm',
         executable='policy_runner_node',
-        output = 'screen',
+        output='screen',
         parameters=[{
             'policy_path': policy_path,
             'joint_state_topic': '/joint_states',
@@ -59,16 +81,17 @@ def generate_launch_description():
             'control_rate_hz': 20.0,
             'joint_names': ['joint1', 'joint2', 'joint3', 'joint4', 'joint5', 'joint6'],
             'action_mode': 'delta_position',
-            'max_delta_rad': 0.05
+            'max_delta_rad': 0.05,
+            'use_sim_time': True,
         }],
-        condition = IfCondition(train_ros)
+        condition=IfCondition(run_policy)
     )
 
     trainer = Node(
         package='brain2rl_openarm',
         executable='rl_train_joint_node',
         output='screen',
-        parameters = [{
+        parameters=[{
             'joint_states_topic': '/joint_states',
             'command_topic': '/joint_group_position_controller/commands',
             'control_rate_hz': 20.0,
@@ -76,15 +99,16 @@ def generate_launch_description():
             'steps_per_episode': 300,
             'joint_names': ['joint1', 'joint2', 'joint3', 'joint4', 'joint5', 'joint6'],
             'max_delta_rad': 0.05,
-            'save_path': 'ros_joint_policy.pt'
+            'save_path': 'ros_joint_policy.pt',
+            'use_sim_time': True,
         }],
-        condition=IfCondition
+        condition=IfCondition(train_ros)
     )
 
     agent_runner = Node(
         package='brain2rl_openarm',
         executable='run_with_agent_node',
-        output = 'screen',
+        output='screen',
         parameters=[{
             'agent_ckpt': agent_ckpt,
             'joint_states_topic': '/joint_states',
@@ -92,9 +116,10 @@ def generate_launch_description():
             'control_rate_hz': 20.0,
             'joint_names': ['joint1', 'joint2', 'joint3', 'joint4', 'joint5', 'joint6'],
             'max_delta_rad': 0.05,
-            'instruction': 'pick up the cup'
+            'instruction': 'pick up the cup',
+            'use_sim_time': True,
         }],
-        condition= IfCondition(run_agent)
+        condition=IfCondition(run_agent)
     )
 
     return LaunchDescription([
@@ -116,5 +141,6 @@ def generate_launch_description():
         TimerAction(period=4.0, actions=[jsb]),
         TimerAction(period=5.5, actions=[jpos]),
         TimerAction(period=6.5, actions=[spawn_cup]),
+
         TimerAction(period=7.0, actions=[policy_runner, trainer, agent_runner]),
     ])

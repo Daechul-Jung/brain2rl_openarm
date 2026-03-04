@@ -7,7 +7,7 @@ import torch.nn.functional as F
 from sensor_msgs.msg import JointState
 from std_msgs.msg import Float64MultiArray
 
-from .joint_order_node import JointOrder
+from .joint_order import JointOrder
 from .obs_builder import ObsBuilder
 
 class SimplePolicy(nn.Module):
@@ -20,3 +20,10 @@ class SimplePolicy(nn.Module):
         )
     def forward(self, x):
         return torch.tanh(self.net(x))
+    
+
+class RLTrainJointNode(Node):
+    """
+    Minimal ROS training Node:
+        
+    """
