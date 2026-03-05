@@ -11,15 +11,9 @@ setup(
     data_files=[
         ('share/ament_index/resource_index/packages', ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
-
-        # launch files (supports *.launch.py and also plain *.py if you have them)
-        (os.path.join('share', package_name, 'launch'),
-         glob(os.path.join(package_name, 'launch', '*.launch.py')) +
-         glob(os.path.join(package_name, 'launch', '*.py'))),
-
-        # config
+        (os.path.join('share', package_name, 'launch'), ['launch/openarm_rl_gazebo.launch.py']),
         (os.path.join('share', package_name, 'config'),
-         glob('config/*.yaml') + glob(os.path.join(package_name, 'config', '*'))),
+        glob('config/*.yaml') + glob(os.path.join(package_name, 'config', '*'))),
     ],
     install_requires=['setuptools'],
     zip_safe=True,

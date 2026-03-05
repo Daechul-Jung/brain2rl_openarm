@@ -5,8 +5,8 @@ import numpy as np
 from sensor_msgs.msg import JointState
 from std_msgs.msg import Float64MultiArray
 
-from joint_order import JointOrder
-from obs_builder import ObsBuilder
+from brain2rl_openarm.nodes.joint_order import JointOrder
+from brain2rl_openarm.nodes.obs_builder import ObsBuilder
 
 class RunWithAgentNode(Node):
     """

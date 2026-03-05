@@ -31,7 +31,7 @@ def generate_launch_description():
     )
 
     robot_description = ParameterValue(
-        Command(['xacro', model, ' use_sim:=true ros2_control:=true']),
+        Command(['xacro', ' ', model, ' ', 'use_sim:=true', ' ', 'ros2_control:=true']),
         value_type=str
     )
 

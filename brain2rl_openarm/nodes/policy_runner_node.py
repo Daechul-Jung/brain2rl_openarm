@@ -5,9 +5,9 @@ import torch
 import torch.nn as nn
 from sensor_msgs.msg import JointState
 from std_msgs.msg import Float64MultiArray
+from brain2rl_openarm.nodes.joint_order import JointOrder
+from brain2rl_openarm.nodes.obs_builder import ObsBuilder
 
-from joint_order import JointOrder
-from obs_builder import ObsBuilder
 
 def load_policy(policy_path:str):
     ckpt = torch.load(policy_path, map_location='cuda')
@@ -35,23 +35,22 @@ class PolicyRunnerNode(Node):
     def __init__(self):
         super().__init__("policy_runner_node")
 
-        self.declare_parameter('policy_path', 'policy.pt')
-        self.declare_parameter('joint_States_topic', '/joint_states')
-        self.declare_parameter('command_topic', 'joint_group_position_controller/commands')
-        self.declare_parameter('control_rate_hz', 20.0)
-        self.declare_parameter('joint_names', ['joint1','joint2', 'joint3', 'joint4', 'joint5', 'joint6'])
-        self.declare_parameter('action_mode', 'delta_position')
-        self.declare_parameter('max_delta_rad', 0.05)
-        self.declare_parameter('use_effort', False)
+        self.declare_parameter("joint_states_topic", "/joint_states")
+        self.declare_parameter("command_topic", "/joint_group_position_controller/commands")
+        self.declare_parameter("control_rate_hz", 20.0)
+        self.declare_parameter("joint_names", ["joint1", "joint2", "joint3", "joint4", "joint5", "joint6"])
+        self.declare_parameter("policy_path", "policy.pt")
+        self.declare_parameter("action_mode", "delta_position")
+        self.declare_parameter("max_delta_rad", 0.05)
 
-        self.policy_path = self.get_parameter("policy_path").value
+        # Then read them
         self.js_topic = self.get_parameter("joint_states_topic").value
-        self.cmd_topic = self.get_parameter("command_topic").value
-        self.rate = float(self.get_parameter("control_rate_hz").value)
+        self.command_topic = self.get_parameter("command_topic").value
+        self.control_rate_hz = float(self.get_parameter("control_rate_hz").value)
         self.joint_names = list(self.get_parameter("joint_names").value)
-        self.action_mode = self.get_parameter("action_mode").value
-        self.max_delta = float(self.get_parameter("max_delta_rad").value)
-        self.use_effort = bool(self.get_parameter("use_effort").value)
+        self.policy_path = str(self.get_parameter("policy_path").value)
+        self.action_mode = str(self.get_parameter("action_mode").value)
+        self.max_delta_rad = float(self.get_parameter("max_delta_rad").value)
 
         self.model, self.obs_dim, self.act_dim = load_policy(self.policy_path)
 
