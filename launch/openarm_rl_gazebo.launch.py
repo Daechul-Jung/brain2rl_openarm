@@ -1,51 +1,56 @@
 from launch import LaunchDescription
-from launch.actions import IncludeLaunchDescription, TimerAction, DeclareLaunchArgument
+from launch.actions import (
+    IncludeLaunchDescription, TimerAction, DeclareLaunchArgument,
+    SetEnvironmentVariable, OpaqueFunction,
+)
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import LaunchConfiguration, Command
+from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
-from launch_ros.parameter_descriptions import ParameterValue
 from ament_index_python.packages import get_package_share_directory
 import os
+import subprocess
 
 
-def generate_launch_description():
-    gui = LaunchConfiguration('gui')
-    model = LaunchConfiguration('model')
+# ---------------------------------------------------------------------------
+# OpaqueFunction: process xacro, inject Gazebo plugin, return all sim nodes
+# ---------------------------------------------------------------------------
+def _launch_setup(context, *args, **kwargs):
+    model_path = LaunchConfiguration('model').perform(context)
 
+    pkg_share = get_package_share_directory('brain2rl_openarm')
+    controller_config = os.path.join(pkg_share, 'config', 'openarm_controllers.yaml')
+
+    # ---- process xacro ----
+    urdf_xml = subprocess.check_output(
+        ['xacro', model_path, 'use_sim:=true', 'ros2_control:=true']
+    ).decode('utf-8')
+
+    # ---- inject gazebo_ros2_control plugin if missing ----
+    if 'gazebo_ros2_control' not in urdf_xml:
+        plugin_xml = (
+            '  <gazebo>\n'
+            '    <plugin filename="libgazebo_ros2_control.so"'
+            ' name="gazebo_ros2_control">\n'
+            f'      <parameters>{controller_config}</parameters>\n'
+            '    </plugin>\n'
+            '  </gazebo>\n'
+        )
+        urdf_xml = urdf_xml.replace('</robot>', plugin_xml + '</robot>')
+
+    # ---- nodes ----
     run_policy = LaunchConfiguration('run_policy')
     train_ros = LaunchConfiguration('train_ros')
     run_agent = LaunchConfiguration('run_agent')
     record_traj = LaunchConfiguration('record_traj')
-
     policy_path = LaunchConfiguration('policy_path')
     agent_ckpt = LaunchConfiguration('agent_ckpt')
-
-    pkg_share = get_package_share_directory('brain2rl_openarm')
-    world_file = os.path.join(pkg_share, 'worlds', 'openarm_table.world')
-    controller_config = os.path.join(pkg_share, 'config', 'openarm_controllers.yaml')
-
-    gazebo = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            os.path.join(get_package_share_directory('gazebo_ros'), 'launch', 'gazebo.launch.py')),
-        launch_arguments={
-            'gui': gui,
-            'verbose': 'true',
-            'world': world_file,
-        }.items()
-    )
-
-    robot_description = ParameterValue(
-        Command(['xacro', ' ', model, ' ', 'use_sim:=true', ' ', 'ros2_control:=true']),
-        value_type=str
-    )
 
     rsp = Node(
         package='robot_state_publisher',
         executable='robot_state_publisher',
         output='screen',
-        parameters=[{'robot_description': robot_description,
-                     'use_sim_time': True}]
+        parameters=[{'robot_description': urdf_xml, 'use_sim_time': True}],
     )
 
     spawn_robot = Node(
@@ -56,29 +61,35 @@ def generate_launch_description():
             '-entity', 'openarm',
             '-x', '0.0', '-y', '0.0', '-z', '0.75',
         ],
-        output='screen'
+        output='screen',
     )
 
     jsb = Node(
         package='controller_manager',
         executable='spawner',
-        arguments=['joint_state_broadcaster', '--controller-manager', '/controller_manager',
-                   '--param-file', controller_config],
-        output='screen'
+        arguments=[
+            'joint_state_broadcaster',
+            '--controller-manager', '/controller_manager',
+            '--param-file', controller_config,
+        ],
+        output='screen',
     )
 
     jpos = Node(
         package='controller_manager',
         executable='spawner',
-        arguments=['joint_group_position_controller', '--controller-manager', '/controller_manager',
-                   '--param-file', controller_config],
-        output='screen'
+        arguments=[
+            'joint_group_position_controller',
+            '--controller-manager', '/controller_manager',
+            '--param-file', controller_config,
+        ],
+        output='screen',
     )
 
     spawn_cup = Node(
         package='brain2rl_openarm',
         executable='spawn_random_cup',
-        output='screen'
+        output='screen',
     )
 
     policy_runner = Node(
@@ -95,7 +106,7 @@ def generate_launch_description():
             'max_delta_rad': 0.05,
             'use_sim_time': True,
         }],
-        condition=IfCondition(run_policy)
+        condition=IfCondition(run_policy),
     )
 
     trainer = Node(
@@ -113,7 +124,7 @@ def generate_launch_description():
             'save_path': 'ros_joint_policy.pt',
             'use_sim_time': True,
         }],
-        condition=IfCondition(train_ros)
+        condition=IfCondition(train_ros),
     )
 
     agent_runner = Node(
@@ -130,7 +141,7 @@ def generate_launch_description():
             'instruction': 'pick up the cup',
             'use_sim_time': True,
         }],
-        condition=IfCondition(run_agent)
+        condition=IfCondition(run_agent),
     )
 
     traj_recorder = Node(
@@ -143,16 +154,61 @@ def generate_launch_description():
             'command_topic': '/joint_group_position_controller/commands',
             'use_sim_time': True,
         }],
-        condition=IfCondition(record_traj)
+        condition=IfCondition(record_traj),
+    )
+
+    return [
+        rsp,
+        TimerAction(period=2.0, actions=[spawn_robot]),
+        TimerAction(period=5.0, actions=[jsb]),
+        TimerAction(period=7.0, actions=[jpos]),
+        TimerAction(period=9.0, actions=[spawn_cup]),
+        TimerAction(period=10.0, actions=[
+            policy_runner, trainer, agent_runner, traj_recorder,
+        ]),
+    ]
+
+
+def generate_launch_description():
+    desc_share = get_package_share_directory('openarm_description')
+    pkg_share = get_package_share_directory('brain2rl_openarm')
+    world_file = os.path.join(pkg_share, 'worlds', 'openarm_table.world')
+
+    # Let Gazebo resolve package:// mesh URIs via the parent of the share dir
+    gazebo_model_path = os.path.join(desc_share, os.pardir)
+
+    gui = LaunchConfiguration('gui')
+
+    gazebo = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            os.path.join(
+                get_package_share_directory('gazebo_ros'),
+                'launch', 'gazebo.launch.py',
+            )
+        ),
+        launch_arguments={
+            'gui': gui,
+            'verbose': 'true',
+            'world': world_file,
+        }.items(),
     )
 
     return LaunchDescription([
+        # ---- environment ----
+        SetEnvironmentVariable(
+            name='GAZEBO_MODEL_PATH',
+            value=[
+                os.environ.get('GAZEBO_MODEL_PATH', ''),
+                ':',
+                gazebo_model_path,
+            ],
+        ),
+
+        # ---- launch arguments ----
         DeclareLaunchArgument('gui', default_value='true'),
         DeclareLaunchArgument('model', default_value=os.path.join(
-            get_package_share_directory('openarm_description'),
-            'urdf', 'robot', 'v10.urdf.xacro'
+            desc_share, 'urdf', 'robot', 'v10.urdf.xacro',
         )),
-
         DeclareLaunchArgument('run_policy', default_value='false'),
         DeclareLaunchArgument('train_ros', default_value='false'),
         DeclareLaunchArgument('run_agent', default_value='false'),
@@ -160,12 +216,9 @@ def generate_launch_description():
         DeclareLaunchArgument('policy_path', default_value='policy.pt'),
         DeclareLaunchArgument('agent_ckpt', default_value=''),
 
-        gazebo, rsp,
+        # ---- Gazebo ----
+        gazebo,
 
-        TimerAction(period=2.0, actions=[spawn_robot]),
-        TimerAction(period=5.0, actions=[jsb]),
-        TimerAction(period=7.0, actions=[jpos]),
-        TimerAction(period=9.0, actions=[spawn_cup]),
-
-        TimerAction(period=10.0, actions=[policy_runner, trainer, agent_runner, traj_recorder]),
+        # ---- all sim nodes via OpaqueFunction ----
+        OpaqueFunction(function=_launch_setup),
     ])

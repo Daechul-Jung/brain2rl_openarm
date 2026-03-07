@@ -24,12 +24,21 @@ SDF_TEMPLATE = """<?xml version="1.0" ?>
 """
 
 def main():
+    # Filter out --ros-args and everything after it (injected by ros2 launch)
+    import sys
+    argv = sys.argv[1:]
+    try:
+        ros_args_idx = argv.index('--ros-args')
+        argv = argv[:ros_args_idx]
+    except ValueError:
+        pass
+
     ap = argparse.ArgumentParser()
     ap.add_argument('--name', type=str, default=None)
     ap.add_argument('--x', type=float, default=None)
     ap.add_argument('--y', type=float, default=None)
     ap.add_argument('--z', type=float, default=0.8)
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
 
     name = args.name or f"cup_{random.randint(1000,9999)}"
     x = args.x if args.x is not None else random.uniform(-0.15, 0.15)
