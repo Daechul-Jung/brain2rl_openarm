@@ -10,11 +10,10 @@ from brain2rl_openarm.nodes.obs_builder import ObsBuilder
 
 
 def load_policy(policy_path:str):
-    ckpt = torch.load(policy_path, map_location='cuda')
+    ckpt = torch.load(policy_path, map_location='cpu')
     obs_dim = int(ckpt['obs_dim'])
     act_dim = int(ckpt['act_dim'])
 
-    import torch.nn as nn
     class MLP(nn.Module):
         def __init__(self, obs_dim, act_dim, hidden=256):
             super().__init__()
@@ -43,7 +42,6 @@ class PolicyRunnerNode(Node):
         self.declare_parameter("action_mode", "delta_position")
         self.declare_parameter("max_delta_rad", 0.05)
 
-        # Then read them
         self.js_topic = self.get_parameter("joint_states_topic").value
         self.command_topic = self.get_parameter("command_topic").value
         self.control_rate_hz = float(self.get_parameter("control_rate_hz").value)
@@ -55,17 +53,17 @@ class PolicyRunnerNode(Node):
         self.model, self.obs_dim, self.act_dim = load_policy(self.policy_path)
 
         self.jorder = JointOrder(self.joint_names)
-        self.obs_builder = ObsBuilder(self.use_effort)
+        self.obs_builder = ObsBuilder(use_effort=False)
 
         self.q, self.dq, self.eff = None, None, None
 
-        self.sub = self.create_subscription(JointState, self.js_topic, self.cb_js, 10) ## Exist callback function, subscribe joint state
-        self.pub = self.create_publisher(Float64MultiArray, self.cmd_topic, 10) ## No callback function, publish command 
+        self.sub = self.create_subscription(JointState, self.js_topic, self.cb_js, 10)
+        self.pub = self.create_publisher(Float64MultiArray, self.command_topic, 10)
 
-        self.timer = self.create_timer(1.0 / self.rate, self.step)
+        self.timer = self.create_timer(1.0 / self.control_rate_hz, self.step)
 
         self.get_logger().info(f'Loaded policy {self.policy_path} obs_dim = {self.obs_dim} act_dim = {self.act_dim}')
-        self.get_logger().info(f'Sub: {self.joint_names} Pub: {self.cmd_topic}')
+        self.get_logger().info(f'Sub: {self.joint_names} Pub: {self.command_topic}')
 
     def cb_js(self, msg: JointState):
         q, dq, eff = self.jorder.reorder(msg)
@@ -73,21 +71,20 @@ class PolicyRunnerNode(Node):
 
     def step(self):
         if self.q is None:
-            return 
-        
-        obs = self.obs_builder.build(self.q, self.dq, self.eff)
-        if obs.shape[0] != self.obs_dim:
-            if obs.shape[0] > self.obs_dim:
-                obs = obs[:self.obs_dim]
-            else:
-                obs = np.pad(obs, (0, self.obs_dim - obs.shape[0]))
+            return
 
-                obs_t = torch.from_numpy(obs).float().unsqueeze(0)
+        obs = self.obs_builder.build(self.q, self.dq, self.eff)
+        if obs.shape[0] > self.obs_dim:
+            obs = obs[:self.obs_dim]
+        elif obs.shape[0] < self.obs_dim:
+            obs = np.pad(obs, (0, self.obs_dim - obs.shape[0]))
+
+        obs_t = torch.from_numpy(obs).float().unsqueeze(0)
         with torch.no_grad():
             a = self.model(obs_t).squeeze(0).cpu().numpy()
 
         if self.action_mode == "delta_position":
-            delta = np.clip(a, -1.0, 1.0) * self.max_delta
+            delta = np.clip(a, -1.0, 1.0) * self.max_delta_rad
             q_cmd = self.q[:len(delta)] + delta
         else:
             q_cmd = a

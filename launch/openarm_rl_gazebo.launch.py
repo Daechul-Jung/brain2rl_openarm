@@ -16,9 +16,14 @@ def generate_launch_description():
     run_policy = LaunchConfiguration('run_policy')
     train_ros = LaunchConfiguration('train_ros')
     run_agent = LaunchConfiguration('run_agent')
+    record_traj = LaunchConfiguration('record_traj')
 
     policy_path = LaunchConfiguration('policy_path')
     agent_ckpt = LaunchConfiguration('agent_ckpt')
+
+    pkg_share = get_package_share_directory('brain2rl_openarm')
+    world_file = os.path.join(pkg_share, 'worlds', 'openarm_table.world')
+    controller_config = os.path.join(pkg_share, 'config', 'openarm_controllers.yaml')
 
     gazebo = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
@@ -26,7 +31,7 @@ def generate_launch_description():
         launch_arguments={
             'gui': gui,
             'verbose': 'true',
-            'extra_gazebo_args': '-s libgazebo_ros_path_plugin.so'
+            'world': world_file,
         }.items()
     )
 
@@ -46,21 +51,27 @@ def generate_launch_description():
     spawn_robot = Node(
         package='gazebo_ros',
         executable='spawn_entity.py',
-        arguments=['-topic', 'robot_description', '-entity', 'openarm'],
+        arguments=[
+            '-topic', 'robot_description',
+            '-entity', 'openarm',
+            '-x', '0.0', '-y', '0.0', '-z', '0.75',
+        ],
         output='screen'
     )
 
     jsb = Node(
         package='controller_manager',
         executable='spawner',
-        arguments=['joint_state_broadcaster', '--controller-manager', '/controller_manager'],
+        arguments=['joint_state_broadcaster', '--controller-manager', '/controller_manager',
+                   '--param-file', controller_config],
         output='screen'
     )
 
     jpos = Node(
         package='controller_manager',
         executable='spawner',
-        arguments=['joint_group_position_controller', '--controller-manager', '/controller_manager'],
+        arguments=['joint_group_position_controller', '--controller-manager', '/controller_manager',
+                   '--param-file', controller_config],
         output='screen'
     )
 
@@ -122,6 +133,19 @@ def generate_launch_description():
         condition=IfCondition(run_agent)
     )
 
+    traj_recorder = Node(
+        package='brain2rl_openarm',
+        executable='traj_recorder_node',
+        output='screen',
+        parameters=[{
+            'out_dir': 'ros_trajs',
+            'joint_states_topic': '/joint_states',
+            'command_topic': '/joint_group_position_controller/commands',
+            'use_sim_time': True,
+        }],
+        condition=IfCondition(record_traj)
+    )
+
     return LaunchDescription([
         DeclareLaunchArgument('gui', default_value='true'),
         DeclareLaunchArgument('model', default_value=os.path.join(
@@ -132,15 +156,16 @@ def generate_launch_description():
         DeclareLaunchArgument('run_policy', default_value='false'),
         DeclareLaunchArgument('train_ros', default_value='false'),
         DeclareLaunchArgument('run_agent', default_value='false'),
+        DeclareLaunchArgument('record_traj', default_value='false'),
         DeclareLaunchArgument('policy_path', default_value='policy.pt'),
         DeclareLaunchArgument('agent_ckpt', default_value=''),
 
         gazebo, rsp,
 
         TimerAction(period=2.0, actions=[spawn_robot]),
-        TimerAction(period=4.0, actions=[jsb]),
-        TimerAction(period=5.5, actions=[jpos]),
-        TimerAction(period=6.5, actions=[spawn_cup]),
+        TimerAction(period=5.0, actions=[jsb]),
+        TimerAction(period=7.0, actions=[jpos]),
+        TimerAction(period=9.0, actions=[spawn_cup]),
 
-        TimerAction(period=7.0, actions=[policy_runner, trainer, agent_runner]),
+        TimerAction(period=10.0, actions=[policy_runner, trainer, agent_runner, traj_recorder]),
     ])
