@@ -26,7 +26,7 @@ class TrajRecorderNode(Node):
 
         os.makedirs(self.out_dir, exist_ok=True)
 
-        self.t0 = True
+        self.t0 = time.time()
         self.t = []
         self.joint_state = []
         self.commands = []
@@ -68,7 +68,7 @@ class TrajRecorderNode(Node):
         np.savez_compressed(
             path,
             t=np.array(self.t, dtype=np.float32),
-            joint_states=np.array(self.joint_states, dtype=object),
+            joint_states=np.array(self.joint_state, dtype=object),
             commands=np.array(self.commands, dtype=object),
         )
         with open(meta, "w") as f:

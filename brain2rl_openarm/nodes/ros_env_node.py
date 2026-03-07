@@ -12,7 +12,7 @@ class RosOpenArmEnv:
     Python env wrapper using ROS topics (used inside a trainer node)
     """
     def __init__(self, node: Node, joint_names, cmd_topic, js_topic, rate_hz = 20.0, use_effort = False):
-        self.node = Node
+        self.node = node
         self.rate_hz = rate_hz
         self.pub = node.create_publisher(msg_type=Float64MultiArray, topic=cmd_topic, qos_profile=10)
         self.jorder = JointOrder(joint_names)
@@ -42,7 +42,7 @@ class RosOpenArmEnv:
         return self.obs_builder.build(self.q, self.dq, self.eff)
     
 
-    def step_posittion(self, q_cmd: np.ndarray):
+    def step_position(self, q_cmd: np.ndarray):
         cmd = Float64MultiArray()
         cmd.data = q_cmd.astype(np.float32).tolist()
         self.pub.publish(cmd)
