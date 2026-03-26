@@ -12,39 +12,24 @@ import os
 import subprocess
 
 
-# ---------------------------------------------------------------------------
-# OpaqueFunction: process xacro, inject Gazebo plugin, return all sim nodes
-# ---------------------------------------------------------------------------
 def _launch_setup(context, *args, **kwargs):
-    model_path = LaunchConfiguration('model').perform(context)
-
     pkg_share = get_package_share_directory('brain2rl_openarm')
     controller_config = os.path.join(pkg_share, 'config', 'openarm_controllers.yaml')
 
-    # ---- process xacro ----
-    urdf_xml = subprocess.check_output(
-        ['xacro', model_path, 'use_sim:=true', 'ros2_control:=true']
-    ).decode('utf-8')
+    # ---- use our custom sim URDF (has world link + ros2_control + Gazebo plugin) ----
+    model_path = os.path.join(pkg_share, 'urdf', 'openarm_sim.urdf.xacro')
+    urdf_xml = subprocess.check_output(['xacro', model_path]).decode('utf-8')
 
-    # ---- inject gazebo_ros2_control plugin if missing ----
-    if 'gazebo_ros2_control' not in urdf_xml:
-        plugin_xml = (
-            '  <gazebo>\n'
-            '    <plugin filename="libgazebo_ros2_control.so"'
-            ' name="gazebo_ros2_control">\n'
-            f'      <parameters>{controller_config}</parameters>\n'
-            '    </plugin>\n'
-            '  </gazebo>\n'
-        )
-        urdf_xml = urdf_xml.replace('</robot>', plugin_xml + '</robot>')
-
-    # ---- nodes ----
-    run_policy = LaunchConfiguration('run_policy')
-    train_ros = LaunchConfiguration('train_ros')
-    run_agent = LaunchConfiguration('run_agent')
-    record_traj = LaunchConfiguration('record_traj')
-    policy_path = LaunchConfiguration('policy_path')
-    agent_ckpt = LaunchConfiguration('agent_ckpt')
+    run_policy   = LaunchConfiguration('run_policy')
+    train_ros    = LaunchConfiguration('train_ros')
+    run_agent    = LaunchConfiguration('run_agent')
+    record_traj  = LaunchConfiguration('record_traj')
+    policy_path  = LaunchConfiguration('policy_path')
+    agent_ckpt   = LaunchConfiguration('agent_ckpt')
+    reppo_train  = LaunchConfiguration('reppo_train')
+    eeg_train    = LaunchConfiguration('eeg_train')
+    load_run     = LaunchConfiguration('load_run')
+    ckpt_path    = LaunchConfiguration('ckpt_path')
 
     rsp = Node(
         package='robot_state_publisher',
@@ -53,6 +38,7 @@ def _launch_setup(context, *args, **kwargs):
         parameters=[{'robot_description': urdf_xml, 'use_sim_time': True}],
     )
 
+    # spawn at table surface (z=0.75); world→base_stand joint provides further offset
     spawn_robot = Node(
         package='gazebo_ros',
         executable='spawn_entity.py',
@@ -157,6 +143,57 @@ def _launch_setup(context, *args, **kwargs):
         condition=IfCondition(record_traj),
     )
 
+    # ── NEW: pure REPPO training from scratch in Gazebo ─────────
+    reppo_trainer = Node(
+        package='brain2rl_openarm',
+        executable='reppo_train_node',
+        output='screen',
+        parameters=[{
+            'joint_states_topic': '/joint_states',
+            'command_topic': '/joint_group_position_controller/commands',
+            'joint_names': ['joint1', 'joint2', 'joint3', 'joint4', 'joint5', 'joint6'],
+            'total_steps': 200000,
+            'num_step': 128,
+            'save_path': 'output/reppo_ros/checkpoint.pth',
+            'use_sim_time': True,
+        }],
+        condition=IfCondition(reppo_train),
+    )
+
+    # ── NEW: EEG-conditioned REPPO training in Gazebo ────────────
+    eeg_trainer = Node(
+        package='brain2rl_openarm',
+        executable='eeg_reppo_train_node',
+        output='screen',
+        parameters=[{
+            'joint_states_topic': '/joint_states',
+            'command_topic': '/joint_group_position_controller/commands',
+            'joint_names': ['joint1', 'joint2', 'joint3', 'joint4', 'joint5', 'joint6'],
+            'total_steps': 200000,
+            'num_step': 128,
+            'eeg_token_pool': '',
+            'save_path': 'output/eeg_reppo_ros/checkpoint.pth',
+            'use_sim_time': True,
+        }],
+        condition=IfCondition(eeg_train),
+    )
+
+    # ── NEW: Load checkpoint (MuJoCo/ManiSkill) and run inference ─
+    loader = Node(
+        package='brain2rl_openarm',
+        executable='load_and_run_node',
+        output='screen',
+        parameters=[{
+            'ckpt_path': ckpt_path,
+            'joint_states_topic': '/joint_states',
+            'command_topic': '/joint_group_position_controller/commands',
+            'joint_names': ['joint1', 'joint2', 'joint3', 'joint4', 'joint5', 'joint6'],
+            'max_delta_rad': 0.05,
+            'use_sim_time': True,
+        }],
+        condition=IfCondition(load_run),
+    )
+
     return [
         rsp,
         TimerAction(period=2.0, actions=[spawn_robot]),
@@ -165,16 +202,15 @@ def _launch_setup(context, *args, **kwargs):
         TimerAction(period=9.0, actions=[spawn_cup]),
         TimerAction(period=10.0, actions=[
             policy_runner, trainer, agent_runner, traj_recorder,
+            reppo_trainer, eeg_trainer, loader,
         ]),
     ]
 
 
 def generate_launch_description():
-    desc_share = get_package_share_directory('openarm_description')
-    pkg_share = get_package_share_directory('brain2rl_openarm')
-    world_file = os.path.join(pkg_share, 'worlds', 'openarm_table.world')
-
-    # Let Gazebo resolve package:// mesh URIs via the parent of the share dir
+    pkg_share    = get_package_share_directory('brain2rl_openarm')
+    desc_share   = get_package_share_directory('openarm_description')
+    world_file   = os.path.join(pkg_share, 'worlds', 'openarm_table.world')
     gazebo_model_path = os.path.join(desc_share, os.pardir)
 
     gui = LaunchConfiguration('gui')
@@ -194,7 +230,6 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
-        # ---- environment ----
         SetEnvironmentVariable(
             name='GAZEBO_MODEL_PATH',
             value=[
@@ -204,21 +239,18 @@ def generate_launch_description():
             ],
         ),
 
-        # ---- launch arguments ----
-        DeclareLaunchArgument('gui', default_value='true'),
-        DeclareLaunchArgument('model', default_value=os.path.join(
-            desc_share, 'urdf', 'robot', 'v10.urdf.xacro',
-        )),
-        DeclareLaunchArgument('run_policy', default_value='false'),
-        DeclareLaunchArgument('train_ros', default_value='false'),
-        DeclareLaunchArgument('run_agent', default_value='false'),
-        DeclareLaunchArgument('record_traj', default_value='false'),
-        DeclareLaunchArgument('policy_path', default_value='policy.pt'),
-        DeclareLaunchArgument('agent_ckpt', default_value=''),
+        DeclareLaunchArgument('gui',          default_value='true'),
+        DeclareLaunchArgument('run_policy',   default_value='false'),
+        DeclareLaunchArgument('train_ros',    default_value='false'),
+        DeclareLaunchArgument('run_agent',    default_value='false'),
+        DeclareLaunchArgument('record_traj',  default_value='false'),
+        DeclareLaunchArgument('policy_path',  default_value='policy.pt'),
+        DeclareLaunchArgument('agent_ckpt',   default_value=''),
+        DeclareLaunchArgument('reppo_train',  default_value='false'),
+        DeclareLaunchArgument('eeg_train',    default_value='false'),
+        DeclareLaunchArgument('load_run',     default_value='false'),
+        DeclareLaunchArgument('ckpt_path',    default_value=''),
 
-        # ---- Gazebo ----
         gazebo,
-
-        # ---- all sim nodes via OpaqueFunction ----
         OpaqueFunction(function=_launch_setup),
     ])

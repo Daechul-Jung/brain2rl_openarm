@@ -14,6 +14,7 @@ setup(
         (os.path.join('share', package_name, 'launch'), glob('launch/*.launch.py')),
         (os.path.join('share', package_name, 'config'), glob('config/*.yaml')),
         (os.path.join('share', package_name, 'worlds'), glob('worlds/*.world')),
+        (os.path.join('share', package_name, 'urdf'), glob('urdf/*.urdf.xacro')),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
@@ -30,6 +31,9 @@ setup(
             'run_with_agent_node = brain2rl_openarm.nodes.run_with_agent_node:main',
             'traj_recorder_node = brain2rl_openarm.nodes.traj_recorder_node:main',
             'spawn_random_cup = brain2rl_openarm.scripts.spawn_random_cup:main',
+            'reppo_train_node = brain2rl_openarm.nodes.reppo_train_node:main',
+            'eeg_reppo_train_node = brain2rl_openarm.nodes.eeg_reppo_train_node:main',
+            'load_and_run_node = brain2rl_openarm.nodes.load_and_run_node:main',
         ],
     },
 )
